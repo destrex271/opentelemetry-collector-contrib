@@ -146,8 +146,7 @@ func nodeAddAndUpdateTest(t *testing.T, c *WatchClient, handler func(obj any)) {
 
 func TestDefaultClientset(t *testing.T) {
 	c, err := New(componenttest.NewNopTelemetrySettings(), k8sconfig.APIConfig{}, ExtractionRules{}, Filters{}, []Association{}, Excludes{}, nil, nil, nil, nil, false, 10*time.Second)
-	assert.Error(t, err)
-	assert.Equal(t, "invalid authType for kubernetes: ", err.Error())
+	require.EqualError(t, err, "invalid authType for kubernetes: ")
 	assert.Nil(t, c)
 
 	c, err = New(componenttest.NewNopTelemetrySettings(), k8sconfig.APIConfig{}, ExtractionRules{}, Filters{}, []Association{}, Excludes{}, newFakeAPIClientset, nil, nil, nil, false, 10*time.Second)
@@ -194,8 +193,7 @@ func TestConstructorErrors(t *testing.T) {
 		}
 		c, err := New(componenttest.NewNopTelemetrySettings(), apiCfg, er, ff, []Association{}, Excludes{}, clientProvider, NewFakeInformer, NewFakeNamespaceInformer, nil, false, 10*time.Second)
 		assert.Nil(t, c)
-		assert.Error(t, err)
-		assert.Equal(t, "error creating k8s client", err.Error())
+		require.EqualError(t, err, "error creating k8s client")
 		assert.Equal(t, apiCfg, gotAPIConfig)
 	})
 }
@@ -430,7 +428,7 @@ func TestPodDelete(t *testing.T) {
 	// delete empty IP pod
 	c.handlePodDelete(&api_v1.Pod{})
 
-	// delete non-existent IP
+	// delete nonexistent IP
 	c.deleteQueue = c.deleteQueue[:0]
 	pod := &api_v1.Pod{}
 	pod.Status.PodIP = "9.9.9.9"
@@ -496,14 +494,14 @@ func TestNamespaceDelete(t *testing.T) {
 	// delete empty namespace
 	c.handleNamespaceDelete(&api_v1.Namespace{})
 
-	// delete non-existent namespace
+	// delete nonexistent namespace
 	namespace := &api_v1.Namespace{}
 	namespace.Name = "namespaceC"
 	c.handleNamespaceDelete(namespace)
 	assert.Len(t, c.Namespaces, 2)
 	got := c.Namespaces["namespaceA"]
 	assert.Equal(t, "namespaceA", got.Name)
-	// delete non-existent namespace when DeletedFinalStateUnknown
+	// delete nonexistent namespace when DeletedFinalStateUnknown
 	c.handleNamespaceDelete(cache.DeletedFinalStateUnknown{Obj: namespace})
 	assert.Len(t, c.Namespaces, 2)
 	got = c.Namespaces["namespaceA"]
@@ -531,14 +529,14 @@ func TestNodeDelete(t *testing.T) {
 	// delete empty node
 	c.handleNodeDelete(&api_v1.Node{})
 
-	// delete non-existent node
+	// delete nonexistent node
 	node := &api_v1.Node{}
 	node.Name = "nodeC"
 	c.handleNodeDelete(node)
 	assert.Len(t, c.Nodes, 2)
 	got := c.Nodes["nodeA"]
 	assert.Equal(t, "nodeA", got.Name)
-	// delete non-existent namespace when DeletedFinalStateUnknown
+	// delete nonexistent namespace when DeletedFinalStateUnknown
 	c.handleNodeDelete(cache.DeletedFinalStateUnknown{Obj: node})
 	assert.Len(t, c.Nodes, 2)
 	got = c.Nodes["nodeA"]
@@ -1360,7 +1358,7 @@ func TestFilters(t *testing.T) {
 		}, {
 			name: "labels-and-fields",
 			filters: Filters{
-				Labels: []FieldFilter{
+				Labels: []LabelFilter{
 					{
 						Key:   "k1",
 						Value: "v1",
@@ -1834,9 +1832,7 @@ func Test_extractField(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.args.r.extractField(tt.args.v); got != tt.want {
-				t.Errorf("extractField() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, tt.args.r.extractField(tt.args.v), "extractField()")
 		})
 	}
 }
@@ -1845,24 +1841,69 @@ func TestErrorSelectorsFromFilters(t *testing.T) {
 	tests := []struct {
 		name    string
 		filters Filters
+		wantErr bool
 	}{
 		{
 			name: "label/invalid-op",
 			filters: Filters{
-				Labels: []FieldFilter{{Op: "invalid-op"}},
+				Labels: []LabelFilter{{Op: "invalid-op"}},
 			},
+			wantErr: true,
+		},
+		{
+			name: "label/equals",
+			filters: Filters{
+				Labels: []LabelFilter{{Key: "app", Op: selection.Equals, Value: "test"}},
+			},
+		},
+		{
+			name: "label/not-equals",
+			filters: Filters{
+				Labels: []LabelFilter{{Key: "app", Op: selection.NotEquals, Value: "test"}},
+			},
+		},
+		{
+			name: "label/exists",
+			filters: Filters{
+				Labels: []LabelFilter{{Key: "app", Op: selection.Exists}},
+			},
+		},
+		{
+			name: "label/does-not-exist",
+			filters: Filters{
+				Labels: []LabelFilter{{Key: "app", Op: selection.DoesNotExist}},
+			},
+		},
+		{
+			name: "label/in",
+			filters: Filters{
+				Labels: []LabelFilter{{Key: "app", Op: selection.In}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "label/not-in",
+			filters: Filters{
+				Labels: []LabelFilter{{Key: "app", Op: selection.NotIn}},
+			},
+			wantErr: true,
 		},
 		{
 			name: "fields/invalid-op",
 			filters: Filters{
 				Fields: []FieldFilter{{Op: selection.Exists}},
 			},
+			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, _, err := selectorsFromFilters(tt.filters)
-			assert.Error(t, err)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }

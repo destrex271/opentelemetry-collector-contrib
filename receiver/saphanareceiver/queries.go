@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
-	"go.opentelemetry.io/collector/receiver/scrapererror"
+	"go.opentelemetry.io/collector/scraper/scrapererror"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/saphanareceiver/internal/metadata"
 )
@@ -37,12 +37,11 @@ func (q *queryStat) collectStat(s *sapHanaScraper, m *monitoringQuery, now pcomm
 			return fmt.Errorf("unable to parse metric for key %s: %w", q.key, err)
 		}
 
-		if q.addMetricFunction != nil {
-			if err = q.addMetricFunction(mb, now, val, row); err != nil {
-				return fmt.Errorf("failed to record metric for key %s: %w", q.key, err)
-			}
-		} else {
+		if q.addMetricFunction == nil {
 			return errors.New("incorrectly configured query, addMetricFunction must be provided")
+		}
+		if err = q.addMetricFunction(mb, now, val, row); err != nil {
+			return fmt.Errorf("failed to record metric for key %s: %w", q.key, err)
 		}
 	}
 	return nil

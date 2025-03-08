@@ -54,13 +54,10 @@ func buildExporterConfig(cfg *Config, endpoint string) otlpexporter.Config {
 	return oCfg
 }
 
-func buildExporterSettings(params exporter.Settings, endpoint string) exporter.Settings {
+func buildExporterSettings(typ component.Type, params exporter.Settings, endpoint string) exporter.Settings {
 	// Override child exporter ID to segregate metrics from loadbalancing top level
-	childName := endpoint
-	if params.ID.Name() != "" {
-		childName = fmt.Sprintf("%s_%s", params.ID.Name(), childName)
-	}
-	params.ID = component.NewIDWithName(params.ID.Type(), childName)
+	childName := fmt.Sprintf("%s_%s", params.ID, endpoint)
+	params.ID = component.NewIDWithName(typ, childName)
 	// Add "endpoint" attribute to child exporter logger to segregate logs from loadbalancing top level
 	params.Logger = params.Logger.With(zap.String(zapEndpointKey, endpoint))
 
@@ -83,22 +80,22 @@ func buildExporterResilienceOptions(options []exporterhelper.Option, cfg *Config
 
 func createTracesExporter(ctx context.Context, params exporter.Settings, cfg component.Config) (exporter.Traces, error) {
 	c := cfg.(*Config)
-	exporter, err := newTracesExporter(params, cfg)
+	exp, err := newTracesExporter(params, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("cannot configure loadbalancing traces exporter: %w", err)
 	}
 
 	options := []exporterhelper.Option{
-		exporterhelper.WithStart(exporter.Start),
-		exporterhelper.WithShutdown(exporter.Shutdown),
-		exporterhelper.WithCapabilities(exporter.Capabilities()),
+		exporterhelper.WithStart(exp.Start),
+		exporterhelper.WithShutdown(exp.Shutdown),
+		exporterhelper.WithCapabilities(exp.Capabilities()),
 	}
 
 	return exporterhelper.NewTraces(
 		ctx,
 		params,
 		cfg,
-		exporter.ConsumeTraces,
+		exp.ConsumeTraces,
 		buildExporterResilienceOptions(options, c)...,
 	)
 }
